@@ -4,33 +4,25 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
-import random
-import numpy as np
-import glob
 import os
 import copy
-import torch
-import torch.nn.functional as F
-
-# Configure CUDA settings
-torch.backends.cudnn.enabled = True
-torch.backends.cudnn.benchmark = True
-torch.backends.cudnn.deterministic = False
-
+import glob
+import random
 import argparse
-from pathlib import Path
+
+import numpy as np
+import torch
 import trimesh
 import pycolmap
-
+import torch.nn.functional as F
 
 from vggt.models.vggt import VGGT
+from vggt.utils.helper import randomly_limit_trues, create_pixel_coordinate_grid
 from vggt.utils.load_fn import load_and_preprocess_images_square
-from vggt.utils.pose_enc import pose_encoding_to_extri_intri
 from vggt.utils.geometry import unproject_depth_map_to_point_map
-from vggt.utils.helper import create_pixel_coordinate_grid, randomly_limit_trues
+from vggt.utils.pose_enc import pose_encoding_to_extri_intri
 from vggt.dependency.track_predict import predict_tracks
 from vggt.dependency.np_to_pycolmap import batch_np_matrix_to_pycolmap, batch_np_matrix_to_pycolmap_wo_track
-
 
 # TODO: add support for masks
 # TODO: add iterative BA
@@ -40,24 +32,48 @@ from vggt.dependency.np_to_pycolmap import batch_np_matrix_to_pycolmap, batch_np
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="VGGT Demo")
-    parser.add_argument("--scene_dir", type=str, required=True, help="Directory containing the scene images")
-    parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
-    parser.add_argument("--use_ba", action="store_true", default=False, help="Use BA for reconstruction")
+    parser = argparse.ArgumentParser(description='VGGT Demo')
+    parser.add_argument(
+        '--scene_dir',
+        type=str,
+        required=True,
+        help='Directory containing the scene images',
+    )
+    parser.add_argument('--seed', type=int, default=42, help='Random seed for reproducibility')
+    parser.add_argument('--use_ba', action='store_true', default=False, help='Use BA for reconstruction')
     ######### BA parameters #########
     parser.add_argument(
-        "--max_reproj_error", type=float, default=8.0, help="Maximum reprojection error for reconstruction"
-    )
-    parser.add_argument("--shared_camera", action="store_true", default=False, help="Use shared camera for all images")
-    parser.add_argument("--camera_type", type=str, default="SIMPLE_PINHOLE", help="Camera type for reconstruction")
-    parser.add_argument("--vis_thresh", type=float, default=0.2, help="Visibility threshold for tracks")
-    parser.add_argument("--query_frame_num", type=int, default=8, help="Number of frames to query")
-    parser.add_argument("--max_query_pts", type=int, default=4096, help="Maximum number of query points")
-    parser.add_argument(
-        "--fine_tracking", action="store_true", default=True, help="Use fine tracking (slower but more accurate)"
+        '--max_reproj_error',
+        type=float,
+        default=8.0,
+        help='Maximum reprojection error for reconstruction',
     )
     parser.add_argument(
-        "--conf_thres_value", type=float, default=5.0, help="Confidence threshold value for depth filtering (wo BA)"
+        '--shared_camera',
+        action='store_true',
+        default=False,
+        help='Use shared camera for all images',
+    )
+    parser.add_argument(
+        '--camera_type',
+        type=str,
+        default='SIMPLE_PINHOLE',
+        help='Camera type for reconstruction',
+    )
+    parser.add_argument('--vis_thresh', type=float, default=0.2, help='Visibility threshold for tracks')
+    parser.add_argument('--query_frame_num', type=int, default=8, help='Number of frames to query')
+    parser.add_argument('--max_query_pts', type=int, default=4096, help='Maximum number of query points')
+    parser.add_argument(
+        '--fine_tracking',
+        action='store_true',
+        default=True,
+        help='Use fine tracking (slower but more accurate)',
+    )
+    parser.add_argument(
+        '--conf_thres_value',
+        type=float,
+        default=5.0,
+        help='Confidence threshold value for depth filtering (wo BA)',
     )
     return parser.parse_args()
 
@@ -69,7 +85,7 @@ def run_VGGT(model, images, dtype, resolution=518):
     assert images.shape[1] == 3
 
     # hard-coded to use 518 for VGGT
-    images = F.interpolate(images, size=(resolution, resolution), mode="bilinear", align_corners=False)
+    images = F.interpolate(images, size=(resolution, resolution), mode='bilinear', align_corners=False)
 
     with torch.no_grad():
         with torch.cuda.amp.autocast(dtype=dtype):
@@ -92,7 +108,7 @@ def run_VGGT(model, images, dtype, resolution=518):
 
 def demo_fn(args):
     # Print configuration
-    print("Arguments:", vars(args))
+    print('Arguments:', vars(args))
 
     # Set seed for reproducibility
     np.random.seed(args.seed)
@@ -101,27 +117,27 @@ def demo_fn(args):
     if torch.cuda.is_available():
         torch.cuda.manual_seed(args.seed)
         torch.cuda.manual_seed_all(args.seed)  # for multi-GPU
-    print(f"Setting seed as: {args.seed}")
+    print(f'Setting seed as: {args.seed}')
 
     # Set device and dtype
     dtype = torch.bfloat16 if torch.cuda.get_device_capability()[0] >= 8 else torch.float16
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    print(f"Using device: {device}")
-    print(f"Using dtype: {dtype}")
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    print(f'Using device: {device}')
+    print(f'Using dtype: {dtype}')
 
     # Run VGGT for camera and depth estimation
     model = VGGT()
-    _URL = "https://huggingface.co/facebook/VGGT-1B/resolve/main/model.pt"
+    _URL = 'https://huggingface.co/facebook/VGGT-1B/resolve/main/model.pt'
     model.load_state_dict(torch.hub.load_state_dict_from_url(_URL))
     model.eval()
     model = model.to(device)
-    print(f"Model loaded")
+    print('Model loaded')
 
     # Get image paths and preprocess them
-    image_dir = os.path.join(args.scene_dir, "images")
-    image_path_list = glob.glob(os.path.join(image_dir, "*"))
+    image_dir = os.path.join(args.scene_dir, 'images')
+    image_path_list = glob.glob(os.path.join(image_dir, '*'))
     if len(image_path_list) == 0:
-        raise ValueError(f"No images found in {image_dir}")
+        raise ValueError(f'No images found in {image_dir}')
     base_image_path_list = [os.path.basename(path) for path in image_path_list]
 
     # Load images and original coordinates
@@ -132,7 +148,7 @@ def demo_fn(args):
     images, original_coords = load_and_preprocess_images_square(image_path_list, img_load_resolution)
     images = images.to(device)
     original_coords = original_coords.to(device)
-    print(f"Loaded {len(images)} images from {image_dir}")
+    print(f'Loaded {len(images)} images from {image_dir}')
 
     # Run VGGT to estimate camera and depth
     # Run with 518x518 images
@@ -159,7 +175,7 @@ def demo_fn(args):
                 masks=None,
                 max_query_pts=args.max_query_pts,
                 query_frame_num=args.query_frame_num,
-                keypoint_extractor="aliked+sp",
+                keypoint_extractor='aliked+sp',
                 fine_tracking=args.fine_tracking,
             )
 
@@ -184,7 +200,7 @@ def demo_fn(args):
         )
 
         if reconstruction is None:
-            raise ValueError("No reconstruction can be built with BA")
+            raise ValueError('No reconstruction can be built with BA')
 
         # Bundle Adjustment
         ba_options = pycolmap.BundleAdjustmentOptions()
@@ -195,13 +211,16 @@ def demo_fn(args):
         conf_thres_value = args.conf_thres_value
         max_points_for_colmap = 100000  # randomly sample 3D points
         shared_camera = False  # in the feedforward manner, we do not support shared camera
-        camera_type = "PINHOLE"  # in the feedforward manner, we only support PINHOLE camera
+        camera_type = 'PINHOLE'  # in the feedforward manner, we only support PINHOLE camera
 
         image_size = np.array([vggt_fixed_resolution, vggt_fixed_resolution])
         num_frames, height, width, _ = points_3d.shape
 
         points_rgb = F.interpolate(
-            images, size=(vggt_fixed_resolution, vggt_fixed_resolution), mode="bilinear", align_corners=False
+            images,
+            size=(vggt_fixed_resolution, vggt_fixed_resolution),
+            mode='bilinear',
+            align_corners=False,
         )
         points_rgb = (points_rgb.cpu().numpy() * 255).astype(np.uint8)
         points_rgb = points_rgb.transpose(0, 2, 3, 1)
@@ -217,7 +236,7 @@ def demo_fn(args):
         points_xyf = points_xyf[conf_mask]
         points_rgb = points_rgb[conf_mask]
 
-        print("Converting to COLMAP format")
+        print('Converting to COLMAP format')
         reconstruction = batch_np_matrix_to_pycolmap_wo_track(
             points_3d,
             points_xyf,
@@ -240,19 +259,24 @@ def demo_fn(args):
         shared_camera=shared_camera,
     )
 
-    print(f"Saving reconstruction to {args.scene_dir}/sparse")
-    sparse_reconstruction_dir = os.path.join(args.scene_dir, "sparse")
+    print(f'Saving reconstruction to {args.scene_dir}/sparse')
+    sparse_reconstruction_dir = os.path.join(args.scene_dir, 'sparse')
     os.makedirs(sparse_reconstruction_dir, exist_ok=True)
     reconstruction.write(sparse_reconstruction_dir)
 
     # Save point cloud for fast visualization
-    trimesh.PointCloud(points_3d, colors=points_rgb).export(os.path.join(args.scene_dir, "sparse/points.ply"))
+    trimesh.PointCloud(points_3d, colors=points_rgb).export(os.path.join(args.scene_dir, 'sparse/points.ply'))
 
     return True
 
 
 def rename_colmap_recons_and_rescale_camera(
-    reconstruction, image_paths, original_coords, img_size, shift_point2d_to_original_res=False, shared_camera=False
+    reconstruction,
+    image_paths,
+    original_coords,
+    img_size,
+    shift_point2d_to_original_res=False,
+    shared_camera=False,
 ):
     rescale_camera = True
 
@@ -292,7 +316,7 @@ def rename_colmap_recons_and_rescale_camera(
     return reconstruction
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     args = parse_args()
     with torch.no_grad():
         demo_fn(args)

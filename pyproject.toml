@@ -1,31 +1,67 @@
 [project]
-authors = [{name = "Jianyuan Wang", email = "jianyuan@robots.ox.ac.uk"}]
-dependencies = [
-    "numpy<2",
-    "Pillow",
-    "huggingface_hub",
-    "einops",
-    "safetensors",
-    "opencv-python",
-]
 name = "vggt"
-requires-python = ">= 3.10"
 version = "0.0.1"
+authors = [{ name = "Jianyuan Wang", email = "jianyuan@robots.ox.ac.uk" }]
+requires-python = ">= 3.10"
+dependencies = [
+  "numpy (>=1.26.0,<2.0.0)",
+  "pillow",
+  "huggingface_hub",
+  "einops",
+  "safetensors",
+  "opencv-python",
+  "torch (>=2.6.0,<2.7.0)",
+  "torchvision (>=0.21.0,<0.22.0)",
+  "trimesh>=4.7.4",
+  "pycolmap==3.10.0",
+  "pyceres==2.3",
+  "lightglue @ https://github.com/jytime/LightGlue.git#egg=lightglue"
+]
 
 [project.optional-dependencies]
 demo = [
-    "gradio==5.17.1",
-    "viser==0.2.23",
-    "tqdm",
-    "hydra-core",
-    "omegaconf",
-    "opencv-python",
-    "scipy",
-    "onnxruntime",
-    "requests",
-    "trimesh",
-    "matplotlib",
+  "gradio==5.17.1",
+  "viser==0.2.23",
+  "tqdm",
+  "hydra-core",
+  "omegaconf",
+  "opencv-python",
+  "scipy",
+  "onnxruntime",
+  "requests",
+  "trimesh",
+  "matplotlib",
 ]
+
+[dependency-groups]
+dev = [
+    "flake8-pyproject>=1.2.3",
+    "mypy>=1.17.1",
+    "ruff>=0.12.10",
+]
+
+# UV setting
+[tool.uv.sources]
+torch = [
+    { marker = "sys_platform == 'win32'", index = "pytorch-cu124" },
+    { marker = "sys_platform == 'linux'", index = "pytorch-cu124" },
+    { marker = "sys_platform == 'darwin'", index = "pytorch-cpu" },
+]
+torchvision = [
+    { marker = "sys_platform == 'win32'", index = "pytorch-cu124" },
+    { marker = "sys_platform == 'linux'", index = "pytorch-cu124" },
+    { marker = "sys_platform == 'darwin'", index = "pytorch-cpu" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cu124"
+url = "https://download.pytorch.org/whl/cu124"
+explicit = true
 
 # Using setuptools as the build backend
 [build-system]
@@ -50,3 +86,34 @@ default = { solve-group = "default" }
 demo = { features = ["demo"], solve-group = "default" }
 
 [tool.pixi.tasks]
+
+# Formatter setting
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.format]
+quote-style = "single"
+
+[tool.ruff.lint]
+select = ["E", "W", "F"]
+ignore = []
+fixable = ["ALL"]
+unfixable = []
+
+[tool.ruff.lint.isort]
+length-sort = true
+length-sort-straight = true
+
+[tool.mypy]
+python_version = "3.11"
+follow_imports = "silent"
+plugins = ["numpy.typing.mypy_plugin"]
+disallow_any_generics = true
+strict_optional = true
+check_untyped_defs = true
+allow_redefinition = true
+
+[tool.flake8]
+max-line-length = 120
+ignore = "Q000,E127,E203,E402,W503,W504"
