@@ -88,7 +88,7 @@ def run_VGGT(model, images, dtype, resolution=518):
     images = F.interpolate(images, size=(resolution, resolution), mode='bilinear', align_corners=False)
 
     with torch.no_grad():
-        with torch.cuda.amp.autocast(dtype=dtype):
+        with torch.amp.autocast(device_type='cuda', dtype=dtype):
             images = images[None]  # add batch dimension
             aggregated_tokens_list, ps_idx = model.aggregator(images)
 
